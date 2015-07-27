@@ -181,6 +181,7 @@ nodes_with_no_connections = []
 for node in degrees.iteritems():
     if node[1] == 0:
         nodes_with_no_connections.append(node[0])
+graph.remove_nodes_from(nodes_with_no_connections)
 
 node_sizes  = []
 node_colors = []
@@ -200,11 +201,11 @@ plt.yticks([])
 print '\t**Drawing nodes ...'
 nx.draw_networkx_nodes(graph, pos=graph_layout, node_size=node_sizes, node_color=node_colors, with_labels=False, alpha=0.75, cmap=plt.get_cmap('Blues'))
 print '\t**Saving pdf (no edges) ...'
-plt.savefig('correlation_network-no_edges.pdf', bbox_inches='tight')#, dpi=100, figsize=(15,15))
+plt.savefig('correlation_network2-no_edges.pdf', bbox_inches='tight')#, dpi=100, figsize=(15,15))
 print '\t**Drawing edges ...'
 nx.draw_networkx_edges(graph, pos=graph_layout, with_labels=False, alpha=0.3)
 print '\t**Saving final pdf ...'
-plt.savefig('correlation_network.pdf', bbox_inches='tight')#, dpi=100, figsize=(15,15))
+plt.savefig('correlation_network2.pdf', bbox_inches='tight')#, dpi=100, figsize=(15,15))
 print '... done!'
 plt.close()
 
