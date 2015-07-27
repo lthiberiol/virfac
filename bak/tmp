@@ -1,0 +1,11 @@
+for term_type in go_desc:
+    pl.figure(figsize=(20,20), dpi=300)
+    ticks = []
+    values = []
+    for  go in go_desc[term_type]:
+        values.append(go_count[go])
+        ticks.append(go_desc[term_type][go])
+    pl.bar(np.arange(len(ticks)), values)
+    pl.xticks(np.arange(len(ticks)), ticks, rotation=45, fontsize=15, ha='right')
+    pl.tight_layout()
+    pl.savefig('ipad_sync/%s-bar.png' %term_type)
