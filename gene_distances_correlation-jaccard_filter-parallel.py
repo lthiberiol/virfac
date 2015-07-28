@@ -16,7 +16,7 @@ import numpy as np
 from statsmodels.sandbox.stats.multicomp import fdrcorrection0 as fdr
 from progressbar import ProgressBar
 
-chdir('/Volumes/Macintosh HD 2/thiberio/virulence_factors/')
+chdir('/Volumes/Macintosh HD 2/thiberio/virulence_factors/network-jaccard_filter')
 
 groups = load( open( 'homologous_groups-merged.pkl' ) )
 pb = pd.read_table('presence_absence-merged.tab', index_col=0, nrows=105)
@@ -26,7 +26,7 @@ pb = pd.read_table('presence_absence-merged.tab', index_col=0, nrows=105)
 ######################################################
 nice_families = {}
 pbar = ProgressBar()
-for dist_table in pbar(listdir('tree_puzzle/distances')):
+for dist_table in pbar(listdir('../tree_puzzle/distances')):
 
     if not dist_table.endswith('.tab'):
         continue
@@ -39,7 +39,7 @@ for dist_table in pbar(listdir('tree_puzzle/distances')):
 
     flag = False
 
-    df = pd.read_table('tree_puzzle/distances/%s' %dist_table, index_col=0)
+    df = pd.read_table('../tree_puzzle/distances/%s' %dist_table, index_col=0)
 
     if df.shape[0] == len(groups[group]):
 
@@ -59,8 +59,7 @@ for pair in combinations(pb.index, 2):
     species_combinations.append( frozenset(pair))
 all_species_distances = pd.DataFrame(index=nice_families.keys(), columns=species_combinations)
 
-pbar = ProgressBar()
-for group in pbar(nice_families.keys()):
+for group in nice_families.keys():
 
     df = nice_families[group].copy()
 
@@ -76,12 +75,16 @@ for n in range(len(columns)):
     columns[n] = '--'.join(columns[n])
 all_species_distances.columns = columns
 
+all_species_distances.to_csv('all_species_distances.tab', sep='\t')
+
 
 ######################################################
-########################### finally, assess distances!
+######################## finally, assess correlations!
 ######################################################
 
-all_species_distances = pd.read_table('all_species_distances.tab', index_col = 0)
+#
+# if want to read a pre-computed distance DataFrame, uncomment line below
+#all_species_distances = pd.read_table('all_species_distances.tab', index_col = 0)
 
 def assess_corr(df, pb, pairs):
     condensed_corr = []
@@ -101,7 +104,7 @@ def assess_corr(df, pb, pairs):
     return (condensed_corr, condensed_pval)
 
 group_pairs = list(combinations(all_species_distances.index, 2))
-num_of_threads = 10
+num_of_threads = 15
 num_of_comparisons = len(group_pairs)
 print "\t** Breaking datasets..."
 avg = num_of_comparisons / float(num_of_threads)
@@ -132,17 +135,19 @@ condensed_pval = np.array(condensed_pval)
 print "\t... done!\n"
 print time() - start_time
 
-out = open('network-jaccard_filter/condensed_corr.pkl', 'wb')
+out = open('condensed_corr.pkl', 'wb')
 dump(condensed_corr, out)
 out.close()
-out = open('network-jaccard_filter/condensed_pval.pkl', 'wb')
+out = open('condensed_pval.pkl', 'wb')
 dump(condensed_pval, out)
 out.close()
 
-print "\t**Loading condensed matrices..."
-condensed_corr = load( open( 'condensed_corr.pkl' ) )
-condensed_pval = load( open( 'condensed_pval.pkl' ) )
-print "\t... done!\n"
+#
+# if wanna load pre-computed condensed correlation and p-value matrices, uncomment bellow
+#print "\t**Loading condensed matrices..."
+#condensed_corr = load( open( 'condensed_corr.pkl' ) )
+#condensed_pval = load( open( 'condensed_pval.pkl' ) )
+#print "\t... done!\n"
 
 print "\t**Correcting p-values..."
 pvals_tested = condensed_pval[pd.notnull(condensed_pval)]
@@ -166,7 +171,7 @@ uncorrected_corr_df = pd.DataFrame(index=all_species_distances.index, columns=al
 
 rejecteds_df = pd.DataFrame(index=all_species_distances.index, columns=all_species_distances.index, data=squareform(should_reject_rho) > 0)
 corr_df = uncorrected_corr_df[rejecteds_df]
-corr_df.to_csv('significant_group_correlations-based_on_distances-bak.tab', sep='\t')
+corr_df.to_csv('significant_group_correlations-based_on_distances.tab', sep='\t')
 print "\t... done!\n"
 
 #
@@ -186,7 +191,7 @@ for n in range( len( weights) ):
         connected_nodes = edges_between[n]
         graph.add_edge( connected_nodes[0], connected_nodes[1], weight = edge_weight )
 
-degrees = graph.degree(weight='weight')
+degrees = graph.degree()
 nodes_with_no_connections = []
 for node in degrees.iteritems():
     if node[1] == 0:
@@ -244,6 +249,7 @@ print '... done!'
 gene_clusters = []
 for line in open('gene_clusters').xreadlines():
     gene_clusters.append(line.split())
+    print len(line.split())
 print len(gene_clusters)
 
 hm21 = 'A_veronii_Hm21'
