@@ -4,19 +4,20 @@
 from os import listdir
 import re
 
-source = '/work/hgt/bepe/aeromonas/original_files_gave_me_by_matt/Public_Genomes/'
-output_folder = '/work/hgt/bepe/aeromonas/virulence_factors/new_genomes/'
+source = '/Volumes/Macintosh HD 2/thiberio/aeromonas_genomes/DNA_ORFs/'
+output_folder = '/Volumes/Macintosh HD 2/thiberio/aeromonas_genomes/DNA_ORFs/formated/'
 
-all_faas = open('new_genomes-verified_to_use.list').read().split('\n')
+all_faas = listdir('genomes_4_clustering')
 
+count = 0
 for faa in all_faas:
-    if faa.startswith('#'):
-        continue
+    faa = faa.replace('.faa', '')
 
-    print faa
+    count += 1
+    print count, faa
     
-    entry  = open(source+faa+'.faa').readlines()
-    output = open(output_folder+faa+'.faa', 'wb')
+    entry  = open(source+faa+'.fna').readlines()
+    output = open(output_folder+faa+'.fna', 'wb')
     taxon_name = faa.replace('_', ' ')
 
     for line in entry:
