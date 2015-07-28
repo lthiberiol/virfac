@@ -7,80 +7,85 @@ import re
 db  = sql.connect(user='root', db='aeromonas')
 cursor = db.cursor()
 
-chdir('/Users/Thiberio/work/virulence_factors')
+cursor.execute('''
+CREATE TABLE `sequences_all` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`seq_id` varchar(100) DEFAULT NULL,
+`genome` varchar(250) DEFAULT NULL,
+`nucleotide` text,
+`aminoacid` text,
+PRIMARY KEY (`id`),
+KEY `gene_genome` (`seq_id`,`genome`)
+)
+''')
+dna_folder = '/Volumes/Macintosh HD 2/thiberio/aeromonas_genomes/DNA_ORFs/formated'
+aa_folder  = 'genomes_4_clustering'
 
-for tmp in listdir('homologous_groups'):
+dna_files = listdir(dna_folder)
+aa_files = listdir(aa_folder)
+
+already_in_db = []
+cursor.execute('SELECT DISTINCT(genome) FROM sequences_all;')
+for result in cursor.fetchall():
+    already_in_db.append(result[0])
+
+for tmp in aa_files:
     if not tmp.endswith('.faa'):
         continue
 
-    group_name = tmp.strip('.faa')
-    sequences = {'dna':{}, 'aa':{}}
+    genome_name = tmp.replace('.faa', '')
 
-    print group_name
+    if genome_name in already_in_db:
+        print '\t**%s already on db!' %genome_name
+        continue
 
-    sql_command = []
-    faa = open('homologous_groups/%s' %tmp).read()
+    sequences = {}
+    print genome_name
+
+    fna = open('%s/%s.fna' %(dna_folder, genome_name)).read()
+    for seq_block in fna.split('>'):
+        if seq_block == '':
+            continue
+        seq_block = seq_block.strip()
+        seq_block = seq_block.split('\n')
+        header = re.search('^(\S+)\s\[(.+?)\]', seq_block[0], re.M)
+        header = header.group(1)
+        seq = ''.join(seq_block[1:]).upper()
+
+        sequences[header] = {}
+        sequences[header]['dna'] = seq
+    del(fna)
+
+    faa = open('%s/%s.faa' %(aa_folder, genome_name)) .read()
     for seq_block in faa.split('>'):
         if seq_block == '':
             continue
         seq_block = seq_block.strip()
         seq_block = seq_block.split('\n')
         header = re.search('^(\S+)\s\[(.+?)\]', seq_block[0], re.M)
-        seq = seq_block[1]
-
-        sql_command.append([header.group(1), header.group(2).replace(' ', '_'), seq])
-#        sql_command.append('("%s" , "%s" , "%s")' %(header.group(1), header.group(2).replace(' ', '_'), seq))
-#    print 'INSERT INTO sequences_test (seq_id , genome , aminoacid) VALUES %s' %' , '.join(sql_command)
-    cursor.executemany('INSERT INTO sequences (seq_id , genome , aminoacid) VALUES (%s , %s , %s)',sql_command)
-db.commit()
-
-
-
-dna_files = listdir('public/DNA')
-aa_files = listdir('public/Protein')
-
-for tmp in listdir('public/DNA'):
-    if not tmp.endswith('.fna'):
-        continue
-
-    genome_name = tmp.strip('.fna')
-    if genome_name in sequences:
-        print '\t**%s already on db!' %genome_name
-        continue
-    sequences[genome_name] = {'dna':{}, 'aa':{}}
-    print genome_name
-
-    fna = open('public/DNA/%s' %tmp).read()
-    for seq_block in fna.split('>'):
-        if seq_block == '':
-            continue
-        seq_block = seq_block.split('\n')
-        header = seq_block[0]
-        seq_iq = header.strip(genome_name).strip('.')
+        header = header.group(1)
         seq = ''.join(seq_block[1:]).upper()
-        sequences[genome_name]['dna'][seq_iq] = seq
-    del(fna)
 
-    if genome_name+'.faa' not in aa_files:
-        '**FUDEU, falta correspondência entre arquivos!'
-        break
-        continue
-
-    faa = open('public/Protein/%s.faa' %genome_name) .read()
-    for seq_block in faa.split('>'):
-        if seq_block == '':
-            continue
-        seq_block = seq_block.split('\n')
-        header = seq_block[0]
-        seq_iq = header.strip(genome_name).strip('.')
-        seq = ''.join(seq_block[1:]).upper()
-        sequences[genome_name]['aa'][seq_iq] = seq
+        if header not in sequences:
+            sequences[header] = {}
+        sequences[header]['aa'] = seq
     del(faa)
 
-    if set(sequences[genome_name]['dna'].keys()) != set(sequences[genome_name]['aa'].keys()):
-        print '**Fudeu, o nome das sequências não bate!'
-        break
+    no_aa  = 0
+    no_dna = 0
+    sql_command = []
+    for seq_id in sequences:
+        if 'dna' not in sequences[seq_id]:
+            no_dna += 1
+        if 'aa' not in sequences[seq_id]:
+            no_aa  += 1
 
-yeah = open('../virulence_factors/genomes_4_clustering_homologues/tmp/selected.genomes').read()
-yeah = yeah.split('.faa\n')
-pwd
+        cursor.execute('INSERT INTO sequences_all (seq_id , genome , aminoacid, nucleotide) VALUES ("%s" , "%s" , "%s" , "%s")' %(seq_id, genome_name, sequences[seq_id]['aa'], sequences[seq_id]['dna']))
+                
+    if no_aa:
+        print '**%i sequences have no aminoacid sequences' %no_aa
+    if no_dna:
+        print '**%i sequences have no nucleotide sequences' %no_dna
+    print ''
+
+db.commit()
