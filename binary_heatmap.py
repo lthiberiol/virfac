@@ -82,7 +82,7 @@ heatmap_ax.set_xticks([])
 heatmap_ax.grid(axis='y')
 
 fig.tight_layout()
-fig.savefig('ipad_sync/genomes_hg-heatmap-average-merged-yeah.pdf')
+fig.savefig('ipad_sync/genomes_hg-heatmap-average-merged.pdf')
 
 
 ################################################################################
