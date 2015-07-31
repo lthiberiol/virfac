@@ -8,6 +8,8 @@ respective_groups = {}
 species_in_groups = {}
 for tree_file in listdir('fasttree'):
 
+    print tree_file
+
     if not tree_file.endswith('.tre'):
         continue
 
