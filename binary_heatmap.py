@@ -1,4 +1,3 @@
-__author__ = 'Thiberio'
 from matplotlib import use
 use('Agg')
 from matplotlib import pyplot as plt
@@ -33,6 +32,8 @@ for group in t3ss_groups:
 out = open('homologous_groups_descriptions-merged.pkl', 'wb')
 dump(merged_groups_desc, out)
 out.close()
+
+merged_groups_desc = load( open( 'homologous_groups_descriptions-merged.pkl' ) )
 
 ################################################################################
 ############################################################### binary heatmap #
@@ -81,7 +82,7 @@ heatmap_ax.set_xticks([])
 heatmap_ax.grid(axis='y')
 
 fig.tight_layout()
-fig.savefig('ipad_sync/genomes_hg-heatmap-average-merged.pdf')
+fig.savefig('ipad_sync/genomes_hg-heatmap-average-merged-yeah.pdf')
 
 
 ################################################################################
@@ -94,7 +95,8 @@ out.write('''
 <table border="1">
 <tr style="background:#000; color:#fff; "> <th></th>\n''' )
 for group in sorted_genes:
-    out.write(' <th><a href="homologous_groups/%s.faa" target="_blank" style="color:#fff">%s</a></th>' %(group, merged_groups_desc[group]))
+    group = group.replace('&', '-')
+    out.write(' <th><a href="fastas/%s.faa" target="_blank" style="color:#fff">%s<br>(%s)</a></th>' %(group, merged_groups_desc[group.replace('-', '&')], group))
 for index in reversed(sorted_species):
     out.write('\t<tr><th style="background:#000; color:#fff; text-align:left;">%s</th>\n' %index)
     for column in sorted_genes:
