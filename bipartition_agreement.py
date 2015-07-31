@@ -3,8 +3,9 @@ import pandas as pd
 from os import listdir, chdir
 
 count = 0
-reliable_branches = []
+reliable_branches = set()
 respective_groups = {}
+species_in_groups = {}
 for tree_file in listdir('fasttree'):
 
     if not tree_file.endswith('.tre'):
@@ -14,6 +15,8 @@ for tree_file in listdir('fasttree'):
 
     tree = phy.read('fasttree/%s' %tree_file, 'newick')
 
+    species_in_groups[group] = set(tree.get_terminals())
+
     respective_groups[group] = []
 
     for branch in tree.get_nonterminals():
@@ -22,7 +25,7 @@ for tree_file in listdir('fasttree'):
             for leaf in branch.get_terminals():
                 leaves.add( leaf.name.split('|')[1] )
         
-            reliable_branches.append(frozenset(leaves))
+            reliable_branches.add(frozenset(leaves))
             respective_groups[group].append( frozenset(leaves) )
 
     count += 1
