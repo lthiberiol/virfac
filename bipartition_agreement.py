@@ -3,7 +3,7 @@ import pandas as pd
 from os import listdir, chdir
 from copy import deepcopy
 
-tree_folder = '../test_trees'
+tree_folder = 'fasttree'
 count = 0
 reliable_branches = set()
 respective_groups = {}
@@ -78,6 +78,9 @@ for group in respective_groups:
         ref_branch = set( deepcopy( branch ) )
         for removable_species in branch_species_not_in_group:
             ref_branch.remove( removable_species )
+
+        if len(ref_branch) < 2:
+            continue
 
         #
         # compare the reference branch against all branches from group. In case
