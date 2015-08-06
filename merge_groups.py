@@ -1,17 +1,17 @@
-__author__ = 'Thiberio'
-
 from os import chdir, listdir, system
-from os.path import getsize
+from os.path import isfile, getsize
 from pickle import load,dump
 from Bio import Phylo as phy
 import pandas as pd
-from os.path import getsize
 from copy import deepcopy
+import multiprocessing
+from Bio.SearchIO import parse
+from itertools import combinations
 
 chdir('/Volumes/Macintosh HD 2/thiberio/virulence_factors')
 hmm_positives = load(open('hmm_positives.pkl'))
 true_positives = load(open('true_positives.pkl'))
-groups = load(open('homologous_groups.pkl'))
+groups = load(open('../homologous_groups.pkl'))
 df = pd.read_table('presence_absence.tab', index_col=0)
 hm21 = 'A_veronii_Hm21'
 
@@ -24,12 +24,92 @@ for group in true_positives:
     same_desc[desc].append(group)
 
 for desc in same_desc:
+
+    if len(same_desc[desc]) == 1:
+        continue
+
     out = open('group_merge/%s.faa' %desc.replace('/', '-').replace(' ', '_'), 'wb')
     for group in same_desc[desc]:
-        entry = open('homologous_groups/%s.faa' %group).read()
+        entry = open('../homologous_groups/%s.faa' %group).read()
         out.write(entry.replace('>', '>%s|' %group).strip('\n'))
         out.write('\n')
     out.close()
+
+################################################################################
+############### run HMMSEARCH for all groups that should be tested for merging #
+################################################################################
+def run_hmm(group):
+    system('hmmsearch -o profile_annotation/%s.hmmout ../hmm_profiles/%s.hmm ../../blast_dbs/uniref90.fasta' %(group, group))
+
+pool = multiprocessing.Pool(processes=15)
+pool.map(run_hmm, true_positives.keys())
+pool.close()
+pool.join()
+################################################################################
+uniref_homologues = {}
+for group in true_positives.keys():
+    print group
+
+    hmmsearch = parse('profile_annotation/%s.hmmout' %group, 'hmmer3-text').next()
+
+    if not hmmsearch.hits:
+        continue
+    
+    best_hit = hmmsearch.hits[0]
+    bitscore_threshold = best_hit.bitscore * 0.7
+
+    uniref_homologues[group] = set()
+    for hit in hmmsearch.hits:
+        if hit.evalue > 1e-15 or hit.bitscore < bitscore_threshold:
+            break
+        else:
+            uniref_homologues[group].add(hit.id)
+
+    if not uniref_homologues[group]:
+        uniref_homologues.pop(group)
+
+yeah = []
+for pair in combinations(uniref_homologues.keys(), 2):
+    if uniref_homologues[pair[0]].intersection(uniref_homologues[pair[1]]):
+        flag = True
+        pair = set(pair)
+        for pos in range(len(yeah)):
+            if yeah[pos].intersection(pair):
+                yeah[pos].update(pair)
+                flag = False
+                break
+        if flag:
+            yeah.append(pair)
+
+def chunks(entry, delim='\n'):
+    buf = bytearray(), 
+    while True:
+        c = entry.read(1)
+        if c == '': 
+            yield str(buf)
+            return
+        print c
+        buf.append(c)
+        if c == delim: 
+            yield str(buf)
+            buf = bytearray()
+
+print 'yeah'
+best_hit.bitscore
+
+################################################################################
+###### run MSA and tree for all descriptions that should be tested for merging #
+################################################################################
+def run_tree(fasta):
+    if isfile('group_merge/%s.faa' %fasta):
+        system('mafft --auto --reorder group_merge/%s.faa > group_merge/mafft/%s.aln' %(fasta, fasta))
+        system('fasttree -wag -gamma group_merge/mafft/%s.aln > group_merge/trees/%s.tre' %(fasta, fasta))
+
+pool = multiprocessing.Pool(processes=15)
+pool.map(run_tree, same_desc.keys())
+pool.close()
+pool.join()
+################################################################################
 
 should_merge = {}
 # should_merge = []
