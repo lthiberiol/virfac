@@ -19,14 +19,13 @@ from progressbar import ProgressBar
 chdir('/Volumes/Macintosh HD 2/thiberio/virulence_factors/network-jaccard_filter')
 
 groups = load( open( 'homologous_groups-merged.pkl' ) )
-pb = pd.read_table('presence_absence-merged.tab', index_col=0, nrows=105)
+pb = pd.read_table('../../presence_absence-merged.tab', index_col=0, nrows=105)
 
 ######################################################
 ########################### finally, assess distances!
 ######################################################
 nice_families = {}
-pbar = ProgressBar()
-for dist_table in pbar(listdir('../tree_puzzle/distances')):
+for dist_table in listdir('distances'):
 
     if not dist_table.endswith('.tab'):
         continue
@@ -39,7 +38,7 @@ for dist_table in pbar(listdir('../tree_puzzle/distances')):
 
     flag = False
 
-    df = pd.read_table('../tree_puzzle/distances/%s' %dist_table, index_col=0)
+    df = pd.read_table('distances/%s' %dist_table, index_col=0)
 
     if df.shape[0] == len(groups[group]):
 
@@ -56,7 +55,7 @@ for dist_table in pbar(listdir('../tree_puzzle/distances')):
 
 species_combinations = []
 for pair in combinations(pb.index, 2):
-    species_combinations.append( frozenset(pair))
+    species_combinations.append( frozenset( pair ) )
 all_species_distances = pd.DataFrame(index=nice_families.keys(), columns=species_combinations)
 
 for group in nice_families.keys():
@@ -86,6 +85,15 @@ all_species_distances.to_csv('all_species_distances.tab', sep='\t')
 # if want to read a pre-computed distance DataFrame, uncomment line below
 #all_species_distances = pd.read_table('all_species_distances.tab', index_col = 0)
 
+ignored_species = ['A_schubertii_CECT4240T', 'A_diversa_CECT4254T', 'A_simiae_CIP107798T']
+columns_to_remove = []
+for column in all_species_distances.columns:
+    species = column.split('--')
+    if species[0] in ignored_species or species[1] in ignored_species:
+        columns_to_remove.append(column)
+all_species_distances.drop(columns_to_remove, axis=1, inplace=True)
+pb.drop(ignored_species, inplace=True)
+
 def assess_corr(df, pb, pairs):
     condensed_corr = []
     condensed_pval = []
@@ -104,7 +112,7 @@ def assess_corr(df, pb, pairs):
     return (condensed_corr, condensed_pval)
 
 group_pairs = list(combinations(all_species_distances.index, 2))
-num_of_threads = 15
+num_of_threads = 10
 num_of_comparisons = len(group_pairs)
 print "\t** Breaking datasets..."
 avg = num_of_comparisons / float(num_of_threads)
@@ -171,7 +179,7 @@ uncorrected_corr_df = pd.DataFrame(index=all_species_distances.index, columns=al
 
 rejecteds_df = pd.DataFrame(index=all_species_distances.index, columns=all_species_distances.index, data=squareform(should_reject_rho) > 0)
 corr_df = uncorrected_corr_df[rejecteds_df]
-corr_df.to_csv('significant_group_correlations-based_on_distances.tab', sep='\t')
+corr_df.to_csv('significant_gene_families_dist_correlations.tab', sep='\t')
 print "\t... done!\n"
 
 #
@@ -198,15 +206,16 @@ for node in degrees.iteritems():
         nodes_with_no_connections.append(node[0])
 graph.remove_nodes_from(nodes_with_no_connections)
 
-node_sizes  = []
-node_colors = []
-nodes_with_no_connections = []
+group_length = []
+node_sizes   = []
+node_colors  = []
 for node in graph.nodes():
     node_sizes.append( len( groups[node] ) )
     node_colors.append( degrees[node] )
-print '... done!'
 
-chdir('../network-jaccard_filter')
+    phylip_header = open('phylip/%s.phy' %node.replace('&', '-')).xreadlines().next()
+    group_length.append( int( phylip_header.split()[1] ) )
+print '... done!'
 
 print '\t**Generating spring layout ...'
 graph_layout = nx.spring_layout(graph, iterations=500)
@@ -219,13 +228,54 @@ plt.yticks([])
 print '\t**Drawing nodes ...'
 nx.draw_networkx_nodes(graph, pos=graph_layout, node_size=node_sizes, node_color=node_colors, with_labels=False, alpha=0.75, cmap=plt.get_cmap('Blues'))
 print '\t**Saving pdf (no edges) ...'
-plt.savefig('correlation_network-no_edges.pdf', bbox_inches='tight')#, dpi=100, figsize=(15,15))
+plt.savefig('correlation_network-ignored_species-no_edges.pdf', bbox_inches='tight')#, dpi=100, figsize=(15,15))
 print '\t**Drawing edges ...'
 nx.draw_networkx_edges(graph, pos=graph_layout, with_labels=False, alpha=0.3)
 print '\t**Saving final pdf ...'
-plt.savefig('correlation_network.pdf', bbox_inches='tight')#, dpi=100, figsize=(15,15))
+plt.savefig('correlation_network-ignored_species.pdf', bbox_inches='tight')#, dpi=100, figsize=(15,15))
 print '... done!'
 plt.close()
+######################################################
+############### test if gene length influences degree!
+######################################################
+plt.figure()
+plt.hist(group_length, bins=100, alpha=0.7, edgecolor='white')
+plt.tight_layout()
+plt.savefig('hist_length.pdf')
+plt.close()
+
+plt.figure()
+plt.hist(node_colors, bins=100, alpha=0.7, edgecolor='white')
+plt.tight_layout()
+plt.savefig('hist_degree.pdf')
+plt.close()
+
+plt.figure()
+plt.hist(node_sizes, bins=100, alpha=0.7, edgecolor='white')
+plt.tight_layout()
+plt.savefig('hist_num_of_species.pdf')
+plt.close()
+
+plt.figure()
+plt.scatter(group_length, node_colors, alpha=0.3, c='g', edgecolor='none')
+plt.xlim(xmin=0)
+plt.ylim(ymin=0)
+plt.xlabel('Gene family sequence length (MSA length)')
+plt.ylabel('Gene family degree')
+plt.tight_layout()
+plt.savefig('length_VS_degree.pdf')
+plt.close()
+
+plt.figure()
+plt.scatter(node_sizes, node_colors, alpha=0.3, c='g', edgecolor='none')
+plt.xlabel('Num os species where gene family is present')
+plt.ylabel('Gene family degree')
+plt.xlim(xmin=0)
+plt.ylim(ymin=0)
+plt.tight_layout()
+plt.savefig('num_of_sp_VS_degree.pdf')
+plt.close()
+######################################################
 
 ######################################################
 ############################################ MCL time!
@@ -289,7 +339,7 @@ for genes in combinations(mls_groups.keys(), 2):
     print genes
 
     pair = [mls_groups[genes[0]], mls_groups[genes[1]]]
-    tmp = all_species_distances.loc[pair].T.copy()
+    tmp = distances_df.loc[pair].T.copy()
     tmp.dropna(axis=0, how='any')
 
     (rho, pval) = spearmanr(tmp)
