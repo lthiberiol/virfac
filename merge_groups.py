@@ -8,12 +8,19 @@ import multiprocessing
 from Bio.SearchIO import parse
 from itertools import combinations
 
-chdir('/Volumes/Macintosh HD 2/thiberio/virulence_factors')
 hmm_positives = load(open('hmm_positives.pkl'))
 true_positives = load(open('true_positives.pkl'))
-groups = load(open('../homologous_groups.pkl'))
-df = pd.read_table('presence_absence.tab', index_col=0)
+groups = load(open('../homologous_groups-merged.pkl'))
+df = pd.read_table('../presence_absence-merged.tab', index_col=0)
 hm21 = 'A_veronii_Hm21'
+
+to_remove = []
+for group in groups.keys():
+    if '&' in group:
+        groups[group.replace('&', '-')] = deepcopy(groups[group])
+        to_remove.append(group)
+for group in to_remove:
+    groups.pop(group)
 
 same_desc = {}
 for group in true_positives:
@@ -30,72 +37,13 @@ for desc in same_desc:
 
     out = open('group_merge/%s.faa' %desc.replace('/', '-').replace(' ', '_'), 'wb')
     for group in same_desc[desc]:
-        entry = open('../homologous_groups/%s.faa' %group).read()
+        if isfile('../homologous_groups/%s.faa' %group):
+            entry = open('../homologous_groups/%s.faa' %group).read()
+        else:
+            entry = open('../profile_annotation-merged/fastas/%s.faa' %group).read()
         out.write(entry.replace('>', '>%s|' %group).strip('\n'))
         out.write('\n')
     out.close()
-
-################################################################################
-############### run HMMSEARCH for all groups that should be tested for merging #
-################################################################################
-def run_hmm(group):
-    system('hmmsearch -o profile_annotation/%s.hmmout ../hmm_profiles/%s.hmm ../../blast_dbs/uniref90.fasta' %(group, group))
-
-pool = multiprocessing.Pool(processes=15)
-pool.map(run_hmm, true_positives.keys())
-pool.close()
-pool.join()
-################################################################################
-uniref_homologues = {}
-for group in true_positives.keys():
-    print group
-
-    hmmsearch = parse('profile_annotation/%s.hmmout' %group, 'hmmer3-text').next()
-
-    if not hmmsearch.hits:
-        continue
-    
-    best_hit = hmmsearch.hits[0]
-    bitscore_threshold = best_hit.bitscore * 0.7
-
-    uniref_homologues[group] = set()
-    for hit in hmmsearch.hits:
-        if hit.evalue > 1e-15 or hit.bitscore < bitscore_threshold:
-            break
-        else:
-            uniref_homologues[group].add(hit.id)
-
-    if not uniref_homologues[group]:
-        uniref_homologues.pop(group)
-
-yeah = []
-for pair in combinations(uniref_homologues.keys(), 2):
-    if uniref_homologues[pair[0]].intersection(uniref_homologues[pair[1]]):
-        flag = True
-        pair = set(pair)
-        for pos in range(len(yeah)):
-            if yeah[pos].intersection(pair):
-                yeah[pos].update(pair)
-                flag = False
-                break
-        if flag:
-            yeah.append(pair)
-
-def chunks(entry, delim='\n'):
-    buf = bytearray(), 
-    while True:
-        c = entry.read(1)
-        if c == '': 
-            yield str(buf)
-            return
-        print c
-        buf.append(c)
-        if c == delim: 
-            yield str(buf)
-            buf = bytearray()
-
-print 'yeah'
-best_hit.bitscore
 
 ################################################################################
 ###### run MSA and tree for all descriptions that should be tested for merging #
@@ -105,25 +53,21 @@ def run_tree(fasta):
         system('mafft --auto --reorder group_merge/%s.faa > group_merge/mafft/%s.aln' %(fasta, fasta))
         system('fasttree -wag -gamma group_merge/mafft/%s.aln > group_merge/trees/%s.tre' %(fasta, fasta))
 
-pool = multiprocessing.Pool(processes=15)
+pool = multiprocessing.Pool(processes=10)
 pool.map(run_tree, same_desc.keys())
 pool.close()
 pool.join()
 ################################################################################
 
 should_merge = {}
-# should_merge = []
 for tree_name in listdir('group_merge/trees'):
 
-    if not getsize('group_merge/trees/%s' %tree_name):
+    if not getsize('group_merge/trees/%s' %tree_name) or not tree_name.endswith('.tre'):
         continue
 
     desc = tree_name.split('.tre')[0]
     tree = phy.parse('group_merge/trees/%s' %tree_name, 'newick')
     tree = tree.next()
-
-#    if tree.total_branch_length() > 0:
-#        tree.root_at_midpoint()
 
     tmp_groups = {}
     for leaf in tree.get_terminals():
@@ -139,15 +83,12 @@ for tree_name in listdir('group_merge/trees'):
 
     for group in tmp_groups:
         if not tree.is_monophyletic(tmp_groups[group]):
-#            should_merge.append(desc)
-#            break
             common_ancestor = tree.common_ancestor(tmp_groups[group])
             tmp_should_merge = set()
 
             for leaf in common_ancestor.get_terminals():
                 group_name = leaf.name.split('|')[0]
                 tmp_should_merge.add(group_name)
-            # tmp_should_merge = frozenset(tmp_should_merge)
 
             if desc not in should_merge:
                 should_merge[desc] = set()
@@ -172,21 +113,22 @@ for desc in should_merge:
         all_mergeable_groups.update(mergeable)
 
 new_groups  = {}
-t3ss_groups = []
+t6ss_groups = []
 for group in groups:
     if group not in all_mergeable_groups:
         new_groups[group] = deepcopy(groups[group])
         if group in true_positives:
-            t3ss_groups.append(group)
+            t6ss_groups.append(group)
 
 for desc in should_merge:
     for mergeable in should_merge[desc]:
-        new_group_name = '&'.join(mergeable)
+        new_group_name = '-'.join(mergeable)
         new_groups[new_group_name] = {}
-        t3ss_groups.append(new_group_name)
+        t6ss_groups.append(new_group_name)
         for group in mergeable:
             if group in new_groups:
                 print 'porréssa?!?!'
+                print group
                 break
             for species in groups[group]:
                 if species not in new_groups[new_group_name]:
@@ -197,8 +139,8 @@ for desc in should_merge:
 out = open('homologous_groups-merged.pkl', 'wb')
 dump(new_groups, out)
 out.close()
-out = open('t3ss_groups-merged.pkl', 'wb')
-dump(t3ss_groups, out)
+out = open('t6ss_groups-merged.pkl', 'wb')
+dump(t6ss_groups, out)
 out.close()
 
 new_df = pd.DataFrame(index=df.index, columns=new_groups.keys(), data=0)
