@@ -9,26 +9,28 @@ import numpy as np
 from os import chdir, listdir
 from pickle import load, dump
 
-chdir('/Volumes/Macintosh HD 2/thiberio/virulence_factors')
-
 groups = load(open('homologous_groups-merged.pkl'))
-t3ss_groups = load(open('t3ss_groups-merged.pkl'))
+t6ss_groups = load(open('t6ss_groups-merged.pkl'))
+true_positives = load( open( 'true_positives.pkl' ) )
+hmm_positives = load( open( 'hmm_positives.pkl' ) )
 df = pd.read_table('presence_absence-merged.tab', index_col=0, nrows=105)
-df = df[t3ss_groups]
+df = df[t6ss_groups]
 
 merged_groups_desc = {}
-for group in t3ss_groups:
-    if '&' not in group:
-        merged_groups_desc[group] = groups_desc[group]
+for group in t6ss_groups:
+    if group in true_positives:
+        merged_groups_desc[group] = hmm_positives[group]['desc']
     else:
         tmp_desc = set()
-        for tmp_group in group.split('&'):
-            tmp_desc.add(groups_desc[tmp_group])
+        for tmp_group in group.split('-'):
+            if tmp_group == '14650_42938.2104' or tmp_group == '323223_93603.1872':
+                tmp_group = '14650_42938.2104-323223_93603.1872'
+            tmp_desc.add(hmm_positives[tmp_group]['desc'])
         if len(tmp_desc) != 1:
             print 'whaaaaat?'
             break
         else:
-            merged_groups_desc[group] = groups_desc[tmp_group]
+            merged_groups_desc[group] = hmm_positives[tmp_group]['desc']
 out = open('homologous_groups_descriptions-merged.pkl', 'wb')
 dump(merged_groups_desc, out)
 out.close()
@@ -39,11 +41,11 @@ merged_groups_desc = load( open( 'homologous_groups_descriptions-merged.pkl' ) )
 ############################################################### binary heatmap #
 ################################################################################
 species_dist = distance.squareform(distance.pdist(df, 'jaccard'))
-species_clst = sch.linkage(species_dist, method='average')
+species_clst = sch.linkage(species_dist, method='average', metric='jaccard')
 species_dend = sch.dendrogram(species_clst, labels=df.index)
 
 genes_dist = distance.squareform(distance.pdist(df.T, 'jaccard'))
-genes_clst = sch.linkage(genes_dist, method='average')
+genes_clst = sch.linkage(genes_dist, method='average', metric='jaccard')
 genes_dend = sch.dendrogram(genes_clst, labels=df.columns)
 
 sorted_species = []
@@ -82,8 +84,7 @@ heatmap_ax.set_xticks([])
 heatmap_ax.grid(axis='y')
 
 fig.tight_layout()
-fig.savefig('ipad_sync/genomes_hg-heatmap-average-merged.pdf')
-
+fig.savefig('genomes_hg-heatmap-average-merged.pdf')
 
 ################################################################################
 ################################################################# HTML version #
@@ -96,14 +97,14 @@ out.write('''
 <tr style="background:#000; color:#fff; "> <th></th>\n''' )
 for group in sorted_genes:
     group = group.replace('&', '-')
-    out.write(' <th><a href="fastas/%s.faa" target="_blank" style="color:#fff">%s<br>(%s)</a></th>' %(group, merged_groups_desc[group.replace('-', '&')], group))
+    out.write(' <th><a href="fastas/%s.faa" target="_blank" style="color:#fff">%s<br>(%s)</a></th>' %(group[:200], merged_groups_desc[group], group))
 for index in reversed(sorted_species):
     out.write('\t<tr><th style="background:#000; color:#fff; text-align:left;">%s</th>\n' %index)
     for column in sorted_genes:
         if index in groups[column]:
             tmp = []
             for protein in groups[column][index]:
-                tmp.append('<a href="interproscan/%s|%s.html">%s</a>' %(protein, index, protein))
+                tmp.append('<a href="interproscan/%s.html">%s</a>' %(protein, protein))
             out.write('\t\t<td style="text-align:center;">%s</td>\n' %'<br>'.join(tmp))
         else:
             out.write('\t\t<td bgcolor="lightgrey"></td>\n')
