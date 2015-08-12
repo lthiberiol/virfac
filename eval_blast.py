@@ -2,6 +2,7 @@
 #coding: utf-8
 import matplotlib
 matplotlib.use('Agg')
+from matplotlib import pyplot as plt
 from statsmodels.sandbox.stats.multicomp import fdrcorrection0, multipletests
 from scipy.stats import ttest_ind
 import matplotlib.pyplot as pl
@@ -9,44 +10,45 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import pandas as pd
 import re
-from os import listdir, chdir
+from os import listdir, chdir, system
 from Bio.SearchIO import parse
 from pickle import load, dump
 from sys import exit
 import matplotlib.gridspec as gridspec
 import scipy.spatial.distance as distance
 import scipy.cluster.hierarchy as sch
+import multiprocessing
+from os.path import isfile
 
-chdir('/Volumes/Macintosh HD 2/thiberio/virulence_factors')
+groups = load(open('../homologous_groups-merged.pkl'))
 
-hg_desc = open('homologous_groups.list').read()
-groups = load(open('homologous_groups.pkl'))
-
-genomes = open('genomes_4_clustering_homologues/tmp/selected.genomes').read().split('\n')
+genomes = open('../genomes_4_clustering_homologues/tmp/selected.genomes').read().split('\n')
 genomes.pop()
 genomes.pop()
 for position in range(len(genomes)):
     genomes[position] = genomes[position].strip('.faa')
 
 vfdb_folder = 'vfdb'
-control_folder = 'control/blast'
-control_desc = open('%s/VFDB_t3ss_Protein.headers' %vfdb_folder).read()
+control_desc = open('%s/VFDB_T6SS_selected_Protein.headers' %vfdb_folder).read()
 control_ids = {}
 for element in re.findall('^(\S+)\s(.*?)[,[]', control_desc, re.M):
     control_ids[element[0]] = element[1].strip(' ')
-df = pd.read_table('presence_absence.tab', index_col=0)
 
-
+df = pd.read_table('../presence_absence-merged.tab', index_col=0)
 
 #
 # evaluate hmmer outputs
 #
 hmm_positives = {}
-for result in listdir('%s/hmm' %vfdb_folder):
-    if not result.endswith('.hmmout'):
+for group in groups.keys():
+
+    group = group.replace('&', '-')
+
+    result  = group+'.hmm.hmmout'
+    if not isfile('%s/hmm/%s' %(vfdb_folder, result)):
+        print '%s not found!' %result
         continue
 
-    hg_id = result.strip('.hmmout')
     result = parse('%s/hmm/%s' %(vfdb_folder, result), 'hmmer3-text').next()
 
     if not result.hits:
@@ -55,7 +57,7 @@ for result in listdir('%s/hmm' %vfdb_folder):
     best_hit = result.hits[0]
     if best_hit.evalue <= 1e-10:
         hsp = best_hit.hsps[0]
-        hmm_positives[hg_id] = {
+        hmm_positives[group] = {
             'bitscore'  : best_hit.bitscore,
             'bias'      : best_hit.bias,
             'evalue'    : best_hit.evalue,
@@ -69,7 +71,7 @@ dump(hmm_positives, out)
 out.close()
 
 vfdb_prot_len = {}
-for block in open('vfdb/VFDB_t3ss_Protein.fas').read().split('>'):
+for block in open('vfdb/VFDB_T6SS_selected_Protein.fas').read().split('>'):
     if block == '':
         continue
     block = block.strip()
@@ -77,10 +79,30 @@ for block in open('vfdb/VFDB_t3ss_Protein.fas').read().split('>'):
     seq = ''.join(block.split('\n')[1:])
     vfdb_prot_len[vfdb_id] = float(len(seq))
 
+def run_blastp(group):
+    out_folder1 = 'vfdb/blast'
+    out_folder2 = 'control/blast'
+    db1 = 'vfdb/VFDB_T6SS_selected_Protein.fas' 
+    db2 = 'control/control.faa' 
+
+    fasta_folder = '../homologous_groups'
+
+    fasta = group+'.faa'
+    blast_res = group+'.bls'
+
+    system('blastp -query %s/%s -db %s -outfmt 7 -out %s/%s' %(fasta_folder, fasta, db1, out_folder1,blast_res))
+    system('blastp -query %s/%s -db %s -outfmt 7 -out %s/%s' %(fasta_folder, fasta, db2, out_folder2,blast_res))
+
+pool = multiprocessing.Pool(processes=15)
+pool.map(run_blastp, hmm_positives.keys())
+pool.close()
+pool.join()
+
 all = {}
 false_positives = []
 true_positives = {}
 test_pvalue = {}
+control_folder = 'control/blast'
 for hg_id in hmm_positives:
     
     vfdb_blast = open('%s/blast/%s.bls' %(vfdb_folder, hg_id)).readlines()
@@ -178,20 +200,6 @@ for hg_id in true_positives:
     descriptions.add(hmm_positives[hg_id]['desc'])
     print '%s:%s %s (%.2f%s)' %(hg_id, blank_spaces, hmm_positives[hg_id]['desc'], 100 * count/len(true_positives[hg_id]['desc']), '%')
 
-df_desc = pd.DataFrame(index=genomes, columns=descriptions)
-desc_table = {}
-for hg_id in true_positives:
-    desc = hmm_positives[hg_id]['desc']
-    if desc not in desc_table:
-        desc_table[desc] = []
-    desc_table[desc].append(hg_id)
-    for genome in groups[hg_id]:
-        index = genome.replace(' ', '_')
-        if type(df_desc.loc[index][desc]) is not list:
-            df_desc.loc[index][desc] = []
-        for protein in groups[hg_id][genome]:
-            df_desc.loc[index][desc].append(protein)
-        
 df_hg = pd.DataFrame(index=genomes, columns=true_positives.keys())
 for hg_id in true_positives:
     for genome in groups[hg_id]:
@@ -216,6 +224,8 @@ negative_scores = {'vfdb':[], 'control':[]}
 for n in all:
     identity = all[n]['vfdb']['identity']
     coverage = all[n]['vfdb']['coverage']
+    if np.mean(coverage) > 1:
+        continue
     tmp1 = np.mean(all[n]['vfdb']['scores'])
     tmp2 = 0.0
     if all[n]['control']['scores']:
@@ -245,10 +255,10 @@ plt.rcParams['figure.figsize'] = (15, 15)
 # set X and Y axis
 fig, axScatter = pl.subplots()
 fig.suptitle("Average BLAST bitscores", fontsize=30)
-axScatter.set_xlabel('T3SS')
+axScatter.set_xlabel('T6SS')
 axScatter.set_ylabel('Control')
-axScatter.scatter(positive_scores['vfdb'], positive_scores['control'], alpha=0.5, c='b', edgecolor='none', s=50, label='T3SS best scores')
-axScatter.scatter(negative_scores['vfdb'], negative_scores['control'], alpha=0.5, c='k', edgecolor='none', s=50, label='Control best scores')
+axScatter.scatter(positive_scores['vfdb'], positive_scores['control'], alpha=0.5, c='b', edgecolor='none', s=50, label='T3SS better scores')
+axScatter.scatter(negative_scores['vfdb'], negative_scores['control'], alpha=0.5, c='k', edgecolor='none', s=50, label='Control better scores')
 axScatter.grid()
 axScatter.legend(scatterpoints=1)
 divider = make_axes_locatable(axScatter)
@@ -261,8 +271,7 @@ axHisty.set_ylim(bottom=0)
 axHistx.set_yticks([])
 axHisty.set_xticks([])
 fig.tight_layout()
-fig.savefig('ipad_sync/blast_scores.png')
-fig.savefig('ipad_sync/blast_scores.pdf')
+fig.savefig('blast_scores.pdf')
 ################################################################################
 
 ################################################################################
@@ -287,87 +296,9 @@ plt.setp(axHistx.get_xticklabels() + axHisty.get_yticklabels(), visible=False)
 axHistx.hist(x, bins=100, color='k', alpha=0.7, edgecolor='white')
 axHisty.hist(y, bins=100, orientation='horizontal', color='k', alpha=0.7, edgecolor='white')
 axHisty.set_ylim(bottom=0)
+axHistx.set_xlim(right=100)
 axHistx.set_yticks([])
 axHisty.set_xticks([])
 fig.tight_layout()
-fig.savefig('ipad_sync/mean_identity_coverage-no_black.png')
-fig.savefig('ipad_sync/mean_identity_coverage-no_black.pdf')
-################################################################################
-
-
-################################################################################
-############################################################### binary heatmap #
-################################################################################
-species_dist = distance.squareform(distance.pdist(df, 'jaccard'))
-species_clst = sch.linkage(species_dist, method='average')
-species_dend = sch.dendrogram(species_clst, labels=df.index)
-
-genes_dist = distance.squareform(distance.pdist(df.T, 'jaccard'))
-genes_clst = sch.linkage(genes_dist, method='average')
-genes_dend = sch.dendrogram(genes_clst, labels=df.columns)
-
-sorted_species = []
-for position in species_dend['leaves']:
-    sorted_species.append(df.index[position])
-sorted_genes = []
-for position in genes_dend['leaves']:
-    sorted_genes.append(df.columns[position])
-
-matrix = []
-for index in sorted_species:
-    matrix.append([])
-    for column in sorted_genes:
-        matrix[-1].append(df.loc[index][column])
-half_matrix = []
-for line in matrix:
-    half_matrix.append(map(lambda x: x/2.0, line))
-
-fig = pl.figure(figsize=(40,20), dpi=300)
-gs = gridspec.GridSpec(1,2,wspace=0.0,width_ratios=[0.25, 1])
-
-dend_ax = fig.add_subplot(gs[0,0])
-dend    = sch.dendrogram(species_clst, color_threshold=np.inf, orientation='right')
-dend_ax.set_xticks([])
-for sp in dend_ax.spines.values():
-    sp.set_visible(False)
-
-heatmap_ax = fig.add_subplot(gs[0,1])
-heatmap    = heatmap_ax.imshow(matrix, interpolation='nearest', aspect='auto', origin='lower', cmap='Blues')
-
-heatmap_ax.set_yticks(np.arange(df.shape[0]))
-heatmap_ax.yaxis.set_ticks_position('right')
-heatmap_ax.set_yticklabels(sorted_species)
-heatmap_ax.set_xticks([])
-heatmap_ax.grid(axis='y')
-
-fig.tight_layout()
-fig.savefig('ipad_sync/genomes_hg-heatmap-complete-yeah.pdf')
-
-
-
-
-################################################################################
-########################## web page with presence/absence and INTERPRO results #
-################################################################################
-out = open('test.html', 'wb')
-out.write('''
-<html>
-<body>
-<table border="1">
-<tr style="background:#000; color:#fff; "> <th>%s</th>\n''' %'</th><th>'.join(yeah))
-for index in df_hg.index:
-    out.write('\t<tr><th style="background:#000; color:#fff; text-align:left;">%s</th>\n' %index)
-    for column in yeah1:
-        if type(df_hg.loc[index][column]) is list:
-            tmp = []
-            for protein in df_hg.loc[index][column]:
-                tmp.append('<a href="interproscan/%s/%s.html">%s</a>' %(column, protein, protein))
-            out.write('\t\t<td style="text-align:center;">%s</td>\n' %'<br>'.join(tmp))
-        else:
-            out.write('\t\t<td bgcolor="lightgrey"></td>\n')
-    out.write('</tr>\n')
-out.write('''
-</table>
-</body>
-</html>''')
+fig.savefig('mean_identity_coverage-no_black.pdf')
 ################################################################################
