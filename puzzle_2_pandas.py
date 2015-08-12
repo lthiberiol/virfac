@@ -8,8 +8,8 @@ import re
 puzzle = open(argv[1]).read()
 
 ids = re.findall('^(_\d+_)', puzzle, re.M)
-codes = load(open('../mafft-seq_codes/%s' %argv[1].replace('.phy.dist', '-seq_codes.pkl')))
-inv_codes = {v: k for k, v in codes.items()}
+inv_codes = load(open('../seq_codes/%s' %argv[1].replace('.phy.dist', '-seq_codes.pkl')))
+#inv_codes = {v: k for k, v in codes.items()}
 
 species = []
 for identifier in ids:
