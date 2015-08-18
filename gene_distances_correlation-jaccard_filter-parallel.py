@@ -14,12 +14,11 @@ import multiprocessing
 import networkx as nx
 import numpy as np
 from statsmodels.sandbox.stats.multicomp import fdrcorrection0 as fdr
-from progressbar import ProgressBar
 
-chdir('/Volumes/Macintosh HD 2/thiberio/virulence_factors/network-jaccard_filter')
+main_dir = ('/Volumes/Macintosh HD 2/thiberio/virulence_factors/')
 
-groups = load( open( 'homologous_groups-merged.pkl' ) )
-pb = pd.read_table('../../presence_absence-merged.tab', index_col=0, nrows=105)
+groups = load( open( '%s/homologous_groups-merged.pkl' %main_dir ) )
+pb = pd.read_table('%s/presence_absence-merged.tab' %main_dir, index_col=0, nrows=105)
 
 ######################################################
 ########################### finally, assess distances!
@@ -89,8 +88,7 @@ ignored_species = ['A_schubertii_CECT4240T', 'A_diversa_CECT4254T', 'A_simiae_CI
 columns_to_remove = []
 for column in all_species_distances.columns:
     species = column.split('--')
-    if species[0] in ignored_species or species[1] in ignored_species:
-        columns_to_remove.append(column)
+    if species[0] in ignored_species or species[1] in 
 all_species_distances.drop(columns_to_remove, axis=1, inplace=True)
 pb.drop(ignored_species, inplace=True)
 
@@ -299,6 +297,13 @@ print '... done!'
 gene_clusters = []
 for line in open('gene_clusters').xreadlines():
     gene_clusters.append(line.split())
+
+for cluster in gene_clusters:
+    if len(cluster) < 10:
+        break
+    system('cat fasttree-no_gene_id/%s.tre > gene_cluster-%i.tre' %( '.tre fasttree-no_gene_id/'.join(cluster) , gene_clusters.index( cluster ) ) )
+    
+
     print len(line.split())
 print len(gene_clusters)
 
@@ -353,3 +358,16 @@ for genes in combinations(mls_groups.keys(), 2):
     plt.title('rho: %.2f | p-value: %.2e' %(rho, pval))
     plt.savefig('mls_gene_corr/%s.pdf' %'-'.join(genes), bbox_inches='tight', dpi=300, figsize=(15,15))
     plt.close()
+
+
+
+def strip_gene_name(tree_name):
+    tree = read('fasttree/%s' %tree_name, 'newick')
+    for leaf in tree.get_terminals():
+        leaf.name = leaf.name.split('|')[1]
+    write(tree, 'fasttree-no_gene_id/%s' %tree_name, 'newick')
+from multiprocessing import Pool
+pool = Pool(processes=10)
+pool.map(strip_gene_name, listdir('fasttree/'))
+pool.close()
+pool.join()
