@@ -21,47 +21,76 @@ sns.distplot( presence_absence[clusters[0]].T.sum(), ax=ax2 )
 fig.tight_layout()
 fig.savefig('cluster0_distribution_test.pdf')
 
-concatenation = {}
-for species in presence_absence.index:
-    concatenation[species] = ''
+species_per_group = map( 
+    lambda position: presence_absence[clusters[position]].sum().values,
+    range(50) ) 
+tmp = np.asarray( map( 
+    lambda position: presence_absence[clusters[position]].T.sum().values / float( len( clusters[position] ) ),
+    range(50) ) )
+groups_per_species = []
+for line in tmp.T:
+    groups_per_species.append( line[line > 0] )
 
-all_species = set( presence_absence.index )
-for group in clusters[0]:
-    print group
+fig, [ax1, ax2] = plt.subplots(nrows=2, figsize=(25,15), dpi=300 )
 
-    tmp_aln = open('mafft/%s.aln' %group).read()
-    tmp_aln = re.sub( '^>\S+\|', '>', tmp_aln, flags=re.M ).split('>')
-    tmp_aln.pop(0)
+sns.violinplot(species_per_group, ax=ax1, color='Set3')
+ax1.set_xticklabels( map( lambda position: 'cluster_%i' %position, range(50) ), rotation='vertical' )
+ax1.set_title( 'Species per group' )
 
-    observed_species = []
-    aln_length    = set()
-    fucked_up     = False
-    for block in tmp_aln:
-        block   = block.split('\n') 
-        species = block[0]
-        seq     = ''.join( block[1:] )
+sns.violinplot(groups_per_species, ax=ax2, color='Set3')
+ax2.set_xticklabels( presence_absence.index, rotation='vertical' )
+ax2.set_title( 'Groups per species' )
 
-        aln_length.add( len(seq) )
+fig.tight_layout()
+fig.savefig('violin_test.pdf')
+print 'yeah'
 
-        if species in observed_species:
+
+for position in range(50):
+
+    concatenation = {}
+    for species in presence_absence.index:
+        concatenation[species] = ''
+
+    all_species = set( presence_absence.index )
+    for group in clusters[position]:
+        print group
+
+        tmp_aln = open('mafft/%s.aln' %group).read()
+        tmp_aln = re.sub( '^>\S+\|', '>', tmp_aln, flags=re.M ).split('>')
+        tmp_aln.pop(0)
+
+        observed_species = []
+        aln_length    = set()
+        fucked_up     = False
+        for block in tmp_aln:
+            block   = block.split('\n') 
+            species = block[0]
+            seq     = ''.join( block[1:] )
+
+            aln_length.add( len(seq) )
+
+            if species in observed_species:
+                fucked_up = True
+                break
+            else:
+                observed_species.append(species)
+                concatenation[species] += seq
+
+        if len(aln_length) != 1:
             fucked_up = True
-            break
         else:
-            observed_species.append(species)
-            concatenation[species] += seq
+            aln_length = aln_length.pop()
+            for species in all_species.difference( observed_species ):
+                concatenation[species] += '-' * aln_length
 
-    if len(aln_length) != 1:
-        fucked_up = True
-    else:
-        aln_length = aln_length.pop()
-        for species in all_species.difference( observed_species ):
-            concatenation[species] += '-' * aln_length
+        if fucked_up:
+            print '**WTF!!!'
+            break
 
-    if fucked_up:
-        print '**WTF!!!'
-        break
-
-out = open('cluster0_concat.aln', 'wb')
-for species in concatenation:
-    out.write('>%s\n%s\n' %( species, concatenation[species] ) )
-out.close()
+    out = open('cluster%i_concat.aln' %position, 'wb')
+    for species in concatenation:
+        if re.match( '-+$', concatenation[species] ):
+            continue
+        out.write('>%s\n%s\n' %( species, concatenation[species] ) )
+    out.close()
