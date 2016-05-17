@@ -71,10 +71,6 @@ without_branch_names = []
 with_branch_names    = []
 times                = []
 for group, reconciliation in zip( group_order, reconciliations ):
-
-    if group != '321039_93602.2082-165230_103.4199':
-        continue
-
     print group
     recon_tree = ete3.Tree( reconciliation.split('\n')[5], format=1)
     original_tree = ete3.Tree( '%s/RAxML_bipartitions.%s-final' %(group, group) )
