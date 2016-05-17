@@ -8,12 +8,16 @@ from multiprocessing import Pool
 from random import sample
 from time import time
 from pickle import load, dump
+from matplotlib import use
+use('Agg')
+from matplotlib import pyplot as plt
 
 trees = phy.parse('RAxML_bootstrap.yeah', 'newick')
 genomes = map( lambda leaf: leaf.name, trees.next().get_terminals() )
 genomes = re.findall('^(.*?)\.faa$', open( '../../genomes_4_clustering_homologues/tmp/selected.genomes').read(), re.M)
+
 trees = []
-for tree in phy.parse('gene_cluster-3.tre', 'newick'):
+for tree in phy.parse('gene_cluster-2.tre', 'newick'):
     trees.append(tree)
 
 branches_df     = pd.DataFrame(index=genomes)
@@ -30,7 +34,7 @@ for tree in trees:
     tree_leaves = map( lambda leaf: leaf.name , tree.get_terminals() )
 
     for branch in tree.get_nonterminals():
-        if branch.confidence < 0.9:
+        if branch.confidence < 0.99:
             continue
         
         branch_counter += 1
@@ -46,9 +50,9 @@ for tree in trees:
         tree_branches.pop(tree_name)
         tree_ids.remove(tree_name)
 
-partitions = []
+partitions = [ [] , [] ]
 for tree_id in tree_ids:
-    partitions.append( branches_df[tree_branches[tree_id]].copy() )
+    partitions[1].append( branches_df[tree_branches[tree_id]].copy() )
 
 def get_incompatible_branches(dfs):
     raw        = []
@@ -84,7 +88,14 @@ def get_incompatible_branches(dfs):
     return (raw, normalized)
 
 del(rf_distances)
-tree_pairs = list( combinations( partitions, 2 ) )
+
+tree_pairs = list( combinations( partitions[1], 2 ) )
+
+tree_pairs = []
+for i in partitions[0]:
+    for j in partitions[1]:
+        tree_pairs.append([i,j])
+
 num_of_threads = 18
 num_of_comparisons = len(tree_pairs)
 avg = num_of_comparisons / float(num_of_threads)
@@ -101,6 +112,22 @@ pool.close()
 pool.join()
 print time() - start_time
 
-out = open('rf_distances.cluster3', 'wb')
+out = open('rf_distances.cluster2-cluster3', 'wb')
 dump(rf_distances, out)
 out.close()
+
+
+
+plt.figure()
+plt.hist(raw3, bins=50, alpha=0.7, histtype='stepfilled', color='y')
+plt.hist(raw4, bins=50, alpha=0.7, histtype='stepfilled', color='b')
+plt.hist(raw34, bins=50, alpha=0.7, histtype='stepfilled', color='g')
+plt.savefig('rf_dists-hist_raw.pdf')
+plt.close()
+
+plt.figure()
+plt.hist(normal3, bins=50, alpha=0.7, histtype='stepfilled', color='y', normed=True)
+plt.hist(normal4, bins=50, alpha=0.3, histtype='stepfilled', color='b', normed=True)
+plt.hist(normal34, bins=50, alpha=0.3, histtype='stepfilled', color='g', normed=True)
+plt.savefig('rf_dists-hist_normalized_normed-34.pdf', bbox_inches='tight')
+plt.close()
